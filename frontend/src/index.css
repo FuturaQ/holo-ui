@@ -1,19 +1,26 @@
 @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;600&display=swap');
 
+/* --- SINGLE SOURCE OF TRUTH: FUTURAQ IDENTITY --- */
 :root {
-  --devs-bg: #0a0e12;
-  --devs-panel: #11161d;
-  --devs-border: #1e252e;
-  --devs-gold: #cba052; /* Dizideki o meşhur altın rengi */
-  --devs-cyan: #56f3d9; /* Kodlardaki parlak turkuaz */
-  --devs-green: #00ff41;
-  --devs-dim: #4a5568;
+  --bg-color: #0a0e12;
+  --panel-bg: #11161d;
+  --border-color: #1e252e;
+  --primary: #56f3d9;   /* Turkuaz (Veri Akışı) */
+  --accent: #cba052;    /* Altın (Önemli Değerler) */
+  --text-main: #a5b3ce; /* Soluk Mavi (Kod) */
+  --text-dim: #4a5568;  /* Sönük (Yorumlar) */
+  --success: #00ff41;   /* Matrix Yeşili (Durum) */
+  --scanline-opacity: 0.15;
+  --font-stack: 'Fira Code', monospace;
+  --glow-intensity: 0px;
 }
 
+/* --- GLOBAL STYLES --- */
+
 body {
-  background-color: var(--devs-bg);
-  color: var(--devs-cyan);
-  font-family: 'Fira Code', monospace; /* Yazılımcı fontu */
+  background-color: var(--bg-color);
+  color: var(--text-main);
+  font-family: var(--font-stack);
   margin: 0;
   overflow: hidden;
   font-size: 12px;
@@ -22,7 +29,7 @@ body {
 /* Scrollbar Gizleme */
 ::-webkit-scrollbar { width: 0px; }
 
-/* CRT Tarama Çizgisi Efekti */
+/* CRT Tarama Çizgisi */
 .scanline {
   position: fixed;
   top: 0;
@@ -33,18 +40,18 @@ body {
     to bottom,
     rgba(255,255,255,0),
     rgba(255,255,255,0) 50%,
-    rgba(0,0,0,0.1) 50%,
-    rgba(0,0,0,0.1)
+    rgba(0,0,0,0.2) 50%,
+    rgba(0,0,0,0.2)
   );
   background-size: 100% 4px;
   pointer-events: none;
   z-index: 9999;
-  opacity: 0.6;
+  opacity: var(--scanline-opacity);
 }
 
 .panel {
-  background: var(--devs-panel);
-  border: 1px solid var(--devs-border);
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
   padding: 10px;
   position: relative;
   display: flex;
@@ -52,41 +59,36 @@ body {
 }
 
 .panel-header {
-  color: var(--devs-dim);
+  color: var(--text-dim);
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 1px;
-  border-bottom: 1px solid var(--devs-border);
+  border-bottom: 1px solid var(--border-color);
   padding-bottom: 5px;
   margin-bottom: 10px;
   display: flex;
   justify-content: space-between;
+  font-weight: bold;
 }
 
 .code-text {
-  color: #a5b3ce;
+  color: var(--text-main);
   line-height: 1.5;
 }
-.keyword { color: #c678dd; }
-.function { color: var(--devs-cyan); }
-.string { color: var(--devs-green); }
-.comment { color: var(--devs-dim); }
 
 .grid-layout {
   display: grid;
   grid-template-columns: 25% 50% 25%;
   grid-template-rows: 60% 40%;
   height: 100vh;
-  gap: 2px;
-  background: var(--devs-border); /* Çerçeve rengi */
-  padding: 2px;
+  gap: 4px;
+  padding: 4px;
 }
 
 /* Yanıp sönen imleç */
 .cursor::after {
   content: '█';
   animation: blink 1s step-end infinite;
-  color: var(--devs-gold);
+  color: var(--accent);
 }
-
 @keyframes blink { 50% { opacity: 0; } }
