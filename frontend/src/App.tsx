@@ -1,243 +1,174 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { BlochSphere } from './components/atomic/BlochSphere';
+import { Multiverse } from './components/atomic/Multiverse';
+import { StarField } from './components/atomic/StarField';
 
-const DEFAULT_CODE = `# Initialize Superposition
-H 0`;
+// SONSUZ KUANTUM AKIŞI İÇİN SENARYOLAR
+const SCENARIOS = [
+  { name: "QUANTUM ENTANGLEMENT SWAP", code: "H 0\nH 1\nCX 0 1\nCX 1 2\nH 0\nMEASURE 0" },
+  { name: "SHOR ALGORITHM (PRIME 15)", code: "H 0\nH 1\nH 2\nCP 0 1\nCP 1 2\nCX 2 0\nINV_QFT" },
+  { name: "GROVER SEARCH (ORACLE)", code: "H 0\nH 1\nX 0\nCX 0 1\nZ 1\nCX 0 1\nX 0\nH 0" },
+  { name: "ERROR CORRECTION (SURFACE)", code: "CNOT 1 3\nCNOT 2 4\nCNOT 1 2\nH 3\nMEASURE SYNDROME" },
+  { name: "VQE MOLECULAR SIM", code: "RY 0.5 0\nRZ 1.2 1\nCNOT 0 1\nRY -0.5 0\nMEASURE HAMILTONIAN" }
+];
 
 function App() {
-  const [code, setCode] = useState(DEFAULT_CODE);
+  const [code, setCode] = useState("");
   const [logs, setLogs] = useState<string[]>([]);
-  const [isRunning, setIsRunning] = useState(false);
+  const [currentCmd, setCurrentCmd] = useState("INIT");
   const [blochState, setBlochState] = useState({ theta: 0, phi: 0 });
+  
+  // --- ENGINE STATES ---
+  const [scenarioIndex, setScenarioIndex] = useState(0);
+  const [lineIndex, setLineIndex] = useState(0);
+  const [entropy, setEntropy] = useState(0); // 0 to 100
+  const [totalOps, setTotalOps] = useState(849200); // Fake sayaç, sürekli artacak
 
-  const [cryptoData, setCryptoData] = useState<any[]>([]);
-
-  // --- YENİ AI STATE'LERİ ---
-  const [prompt, setPrompt] = useState("");
-  const [isGenerating, setIsGenerating] = useState(false);
-
-  // --- AI GENERATION FUNCTION ---
-  const generateWithAI = async () => {
-    if (!prompt.trim()) return;
-    
-    setIsGenerating(true);
-    setLogs(prev => [`[${new Date().toISOString().split('T')[1].slice(0,-1)}] UPLINKING_TO_QAI_ENGINE...`, ...prev]);
-
-    try {
-      const response = await fetch('http://127.0.0.1:8000/ai/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: prompt })
-      });
-      
-      const data = await response.json();
-      
-      if (data.status === 'success') {
-         // Kodu değiştir (Daktilo efekti olmadan direkt yapıştırıyoruz şimdilik)
-         setCode(data.generated_code);
-         setLogs(prev => [`QAI_RESPONSE: ${data.agent_message}`, ...prev]);
-      } else {
-         setLogs(prev => [`AI_ERROR: ${data.message}`, ...prev]);
-      }
-    } catch (e) {
-      setLogs(prev => [`CONNECTION_REFUSED: AI Node offline`, ...prev]);
-    }
-    
-    setIsGenerating(false);
-  };
-
-  // ... (runCircuit fonksiyonu AYNI kalsın) ...
-  const runCircuit = async () => {
-    setIsRunning(true);
-    // ... (Eski kodun aynısı buraya)
-    // ... (fetch quantum/run kısmı)
-    // ...
-    // ... (blochState hesaplama kısmı)
-    // Sadece örnek olması için buraya tekrar kopyalamıyorum, eski runCircuit'i koru.
-    // Ancak backend çağrısı hatasız olmalı. 
-    
-    // -- HIZLI RESTORASYON İÇİN KISA VERSİYON (Eğer kopyalarken bozulursa diye) --
-    try {
-        const response = await fetch('http://127.0.0.1:8000/quantum/run', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: code })
-        });
-        const data = await response.json();
-        if (data.status === 'success') {
-            setLogs(prev => [...data.logs.reverse(), ...prev]);
-            // Bloch Logic
-            if (data.statevector && data.statevector.length >= 2) {
-                const amp0 = data.statevector[0]; const amp1 = data.statevector[1];
-                const mag0 = Math.sqrt(amp0.real**2 + amp0.imag**2);
-                const mag1 = Math.sqrt(amp1.real**2 + amp1.imag**2);
-                let theta = 2 * Math.acos(Math.min(mag0, 1.0));
-                if (mag1 > mag0) theta = Math.PI - (2 * Math.acos(Math.min(mag1, 1.0)));
-                if (Math.abs(mag0 - mag1) < 0.1 && mag0 > 0.4) theta = Math.PI / 2; 
-                setBlochState({ theta, phi: 0 });
-            }
-        }
-    } catch(e) { console.error(e); }
-    setIsRunning(false);
-  };
-
-  // ... runCircuit ve generateWithAI fonksiyonlarının yanına
-  const establishSecureLink = async () => {
-      try {
-          const res = await fetch('http://127.0.0.1:8000/crypto/handshake');
-          const data = await res.json();
-          
-          // Yeni gelen veriyi listenin başına ekle (Log gibi akması için)
-          setCryptoData(prev => [
-              {
-                  id: Math.floor(Math.random() * 9999),
-                  algo: data.algo,
-                  key: data.keys.public_key_frag,
-                  status: data.status
-              },
-              ...prev
-          ].slice(0, 12)); // Sadece son 12 satırı tut
-          
-      } catch (e) {
-          console.error("Crypto module offline");
-      }
-  };
-
-  // Otomatik handshake simülasyonu (Her 2 saniyede bir çalışsın)
+  // --- THE PERPETUAL MOTION ENGINE ---
   useEffect(() => {
-      const interval = setInterval(establishSecureLink, 2000);
-      return () => clearInterval(interval);
-  }, []);
+    let timeout: any;
+    
+    // HIZ HESAPLAMA: Entropi arttıkça hızlanır (Min 30ms, Max 150ms)
+    // Entropi 100 olunca "CRITICAL" mod, çok hızlı.
+    const speed = Math.max(30, 150 - entropy); 
 
-  // Klavye: Ctrl+Enter (Run), Enter (AI Input'tayken Generate)
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.ctrlKey && e.key === 'Enter') runCircuit();
-  };
+    const runStep = () => {
+      const scenario = SCENARIOS[scenarioIndex];
+      const lines = scenario.code.split('\n');
+
+      if (lineIndex < lines.length) {
+        // --- SATIR İŞLEME ---
+        const line = lines[lineIndex];
+        
+        // Kodu ekle (Matrix stili: üstten alta değil, sürekli üzerine yazma hissi)
+        setCode(prev => {
+            const arr = prev.split('\n');
+            if (arr.length > 12) arr.shift(); // Ekran dolmasın, yukarı kaydır
+            return arr.join('\n') + line + "\n";
+        });
+        
+        // Komut Analizi
+        if (line.includes('H')) setCurrentCmd('H');
+        else if (line.includes('CX') || line.includes('CNOT')) setCurrentCmd('CX');
+        else if (line.includes('MEASURE')) setCurrentCmd('MEASURE');
+        else setCurrentCmd('OP');
+
+        // Bloch Oynat
+        setBlochState({ theta: Math.random() * Math.PI, phi: Math.random() * Math.PI * 2 });
+
+        // İstatistikleri Artır
+        setLogs(prev => [`[T+${Date.now()%10000}] ${line}`, ...prev].slice(0, 18));
+        setTotalOps(prev => prev + 1);
+        
+        // ENTROPİ ARTIRMA (Her satırda artar)
+        setEntropy(prev => {
+            if (prev >= 100) return 0; // SINGULARITY RESET!
+            return prev + 0.5;
+        });
+
+        // Sonraki satıra geç
+        setLineIndex(prev => prev + 1);
+        
+      } else {
+        // --- SENARYO BİTTİ -> ANINDA SONRAKİNE GEÇ (DURMAK YOK) ---
+        setLogs(prev => [`--- ${scenario.name} COMPLETE ---`, ...prev]);
+        setLineIndex(0);
+        setScenarioIndex(prev => (prev + 1) % SCENARIOS.length);
+        // Kod ekranını temizlemiyoruz, akış devam etsin!
+      }
+    };
+
+    timeout = setTimeout(runStep, speed);
+    return () => clearTimeout(timeout);
+
+  }, [lineIndex, scenarioIndex, entropy]);
+
+  // CRITICAL MODE (Entropy > 90) Rengi
+  const isCritical = entropy > 90;
+  const systemColor = isCritical ? '#ff3300' : 'var(--primary)';
 
   return (
     <>
       <div className="scanline"></div>
-      <div className="grid-layout">
+      
+      {/* BACKGROUND - Rengi duruma göre değişir */}
+      <div style={{ position: 'fixed', inset: 0, zIndex: -1, background: isCritical ? '#1a0500' : '#020205', transition: 'background 0.5s' }}>
+        <Canvas camera={{ position: [0, 0, 1] }}>
+          <StarField />
+        </Canvas>
+      </div>
+
+      <div className="grid-layout" style={{ gap: '0', padding: '0', height: '100vh', display:'grid', gridTemplateColumns:'280px 1fr 320px', gridTemplateRows:'1fr 280px' }}>
         
-        {/* PANEL 1: CONTROL (SOL) - AYNI KALSIN */}
-        <div className="panel" style={{ gridRow: "1 / 3" }}>
-          {/* ... (Eski Panel 1 kodları aynen kalsın) ... */}
-           <div className="panel-header">
-            <span>SYSTEM CONTROL</span>
-            <span>V 0.3 AI</span>
-          </div>
-          {/* EXECUTE BUTTON vb... */}
-          <div className="code-text" style={{ fontSize: '11px' }}>
-             <button onClick={runCircuit} disabled={isRunning} style={{
-                background: isRunning ? 'var(--text-dim)' : 'transparent',
-                color: isRunning ? '#000' : 'var(--primary)',
-                border: '1px solid var(--primary)', padding: '10px', width: '100%', cursor: 'pointer', fontFamily: 'var(--font-stack)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '2px'
-              }}>
-              {isRunning ? 'PROCESSING...' : 'EXECUTE SEQUENCE'}
-            </button>
-            <div style={{ textAlign: 'center', marginTop: '40px', border: '1px solid var(--primary)', padding: '10px', color: 'var(--accent)', background: 'rgba(86, 243, 217, 0.05)' }}>
-              FUTURAQ PLATFORM
+        {/* SOL PANEL: SYSTEM METRICS */}
+        <div className="panel" style={{ gridRow: '1 / 3', borderRight: `1px solid ${systemColor}`, background:'rgba(0,0,0,0.85)', padding:'20px', display:'flex', flexDirection:'column' }}>
+            <div style={{color: systemColor, fontSize:'24px', fontWeight:'900', letterSpacing:'4px', marginBottom:'20px'}}>
+                FUTURAQ
             </div>
-          </div>
+
+            {/* ENTROPY BAR (SINGULARITY PROGRESS) */}
+            <div style={{marginBottom:'30px'}}>
+                <div style={{display:'flex', justifyContent:'space-between', fontSize:'10px', color:'var(--text-dim)', marginBottom:'5px'}}>
+                    <span>SYSTEM ENTROPY</span>
+                    <span style={{color: isCritical ? 'red' : 'inherit'}}>{Math.floor(entropy)}%</span>
+                </div>
+                <div style={{width:'100%', height:'6px', background:'#222'}}>
+                    <div style={{width: `${entropy}%`, height:'100%', background: isCritical ? 'red' : 'var(--primary)', boxShadow: `0 0 10px ${systemColor}`, transition:'width 0.1s linear'}}></div>
+                </div>
+                {isCritical && <div style={{color:'red', fontSize:'10px', marginTop:'5px', animation:'blink 0.2s infinite'}}>⚠ CRITICAL MASS IMMINENT</div>}
+            </div>
+            
+            <div style={{fontSize:'10px', color:'var(--text-dim)', marginTop:'auto'}}>
+                TOTAL OPS: <span style={{color:'white'}}>{totalOps.toLocaleString()}</span><br/>
+                QPU TEMP: <span style={{color: isCritical ? 'red' : 'white'}}>{isCritical ? '15mK (WARNING)' : '12mK'}</span>
+            </div>
         </div>
 
-        {/* PANEL 2: EDITOR (ORTA) - GÜNCELLENİYOR */}
-        <div className="panel">
-          <div className="panel-header">
-            <span>QUANTUM INSTRUCTION SET</span>
-            <span>EDIT MODE</span>
-          </div>
-          
-          {/* --- YENİ AI INPUT BAR --- */}
-          <div style={{ display: 'flex', marginBottom: '10px', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
-            <span style={{ color: 'var(--accent)', marginRight: '10px', alignSelf: 'center' }}>AI_PROMPT:</span>
-            <input 
-                type="text" 
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && generateWithAI()}
-                placeholder="Ex: Create a Bell State..."
-                style={{
-                    background: 'rgba(0,0,0,0.3)',
-                    border: 'none',
-                    color: 'var(--text-main)',
-                    fontFamily: 'var(--font-stack)',
-                    flex: 1,
-                    outline: 'none'
-                }}
-            />
-            <button 
-                onClick={generateWithAI}
-                disabled={isGenerating}
-                style={{
-                    background: 'var(--accent)',
-                    color: '#000',
-                    border: 'none',
-                    fontFamily: 'var(--font-stack)',
-                    cursor: 'pointer',
-                    padding: '0 15px',
-                    fontWeight: 'bold'
-                }}
-            >
-                {isGenerating ? '...' : 'GEN'}
-            </button>
-          </div>
-          
-          {/* TEXTAREA (Aynı) */}
-          <textarea 
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            onKeyDown={handleKeyDown}
-            className="code-text"
-            spellCheck="false"
-            style={{ width: '100%', height: '100%', background: 'transparent', border: 'none', resize: 'none', outline: 'none', fontFamily: 'var(--font-stack)', fontSize: '14px', color: 'var(--text-main)' }}
-          />
+        {/* ORTA PANEL: INFINITE CODE STREAM */}
+        <div className="panel" style={{ borderRight: `1px solid ${systemColor}`, position:'relative', overflow:'hidden' }}>
+            {/* Arka Plan Dev Harf */}
+            <div style={{position:'absolute', top:'50%', left:'50%', transform:'translate(-50%, -50%)', fontSize:'150px', opacity:'0.03', fontWeight:'900', color:'white', pointerEvents:'none'}}>
+                {currentCmd}
+            </div>
+
+            <div style={{padding:'40px', fontFamily:'Fira Code', fontSize:'16px', lineHeight:'1.8', color:'var(--text-main)', height:'100%', display:'flex', flexDirection:'column', justifyContent:'flex-end'}}>
+                <div style={{color: systemColor, marginBottom:'10px', borderBottom:`1px solid ${systemColor}`, paddingBottom:'5px'}}>
+                    &gt; EXECUTING: {SCENARIOS[scenarioIndex].name}
+                </div>
+                <pre style={{whiteSpace:'pre-wrap', textShadow:`0 0 5px ${systemColor}`, margin:0}}>
+                    {code}
+                    <span className="cursor" style={{background: systemColor}}> </span>
+                </pre>
+            </div>
         </div>
 
-        {/* PANEL 3: CRYPTO MONITOR (RIGHT) */}
-        <div className="panel">
-          <div className="panel-header">
-            <span>PQC UPLINK (KYBER-512)</span>
-            <span style={{ color: 'var(--success)' }}>SECURE</span>
-          </div>
-          
-          <table style={{ width: '100%', textAlign: 'left', fontFamily: 'monospace', color: 'var(--text-dim)', fontSize: '10px' }}>
-            <thead>
-              <tr style={{ color: 'var(--primary)', borderBottom: '1px solid #333' }}>
-                <th>ID</th><th>ALGO</th><th>KEY_FRAG</th><th>STATUS</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cryptoData.map((row, i) => (
-                <tr key={i} style={{ opacity: 1 - (i * 0.08) }}> {/* Eskiyen veriler sönükleşsin */}
-                  <td style={{ color: 'var(--text-main)' }}>#{row.id}</td>
-                  <td style={{ color: 'var(--accent)' }}>{row.algo}</td>
-                  <td style={{ fontFamily: 'monospace' }}>{row.key}</td>
-                  <td style={{ color: 'var(--success)' }}>{row.status}</td>
-                </tr>
-              ))}
-              {/* Veri yoksa placeholder */}
-              {cryptoData.length === 0 && (
-                  <tr><td colSpan={4} style={{textAlign:'center', paddingTop:'20px'}}>INITIALIZING PQC PROTOCOL...</td></tr>
-              )}
-            </tbody>
-          </table>
+        {/* SAĞ ÜST: REACTIVE MULTIVERSE */}
+        <div className="panel" style={{ background:'black', borderBottom: `1px solid ${systemColor}` }}>
+            <Canvas camera={{ position: [0, 0, 7], fov: 60 }}>
+                <Multiverse command={currentCmd} entropy={entropy} />
+            </Canvas>
+            <div style={{position:'absolute', top:10, right:10, fontSize:'10px', color: systemColor}}>
+                {isCritical ? 'SINGULARITY DETECTED' : 'HILBERT SPACE'}
+            </div>
         </div>
 
-        <div className="panel">
-          <div className="panel-header"><span>KERNEL LOG</span><span>LIVE</span></div>
-          <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto' }}>
-             {logs.map((log, i) => (
-               <div key={i} style={{ fontFamily: 'monospace', fontSize: '10px', color: log.includes('ERROR') ? 'red' : 'var(--text-main)', borderBottom: '1px solid #222', padding: '2px' }}>{log}</div>
-             ))}
-          </div>
+        {/* ORTA ALT: LOGS */}
+        <div className="panel" style={{ gridColumn: '2 / 3', borderTop: `1px solid ${systemColor}`, background:'rgba(0,0,0,0.95)' }}>
+            <div style={{padding:'10px', height:'100%', overflow:'hidden', display:'flex', flexDirection:'column-reverse'}}>
+                {logs.map((log, i) => (
+                    <div key={i} style={{fontFamily:'monospace', fontSize:'11px', color: i===0 ? 'white' : '#555'}}>
+                        {log}
+                    </div>
+                ))}
+            </div>
         </div>
 
-        <div className="panel" style={{ position: 'relative', overflow: 'hidden' }}>
-           <div style={{ width: '100%', height: '100%' }}>
-             <Canvas camera={{ position: [0, 0, 6], fov: 45 }}>
-               <BlochSphere theta={blochState.theta} phi={blochState.phi} />
+        {/* SAĞ ALT: BLOCH SPHERE */}
+        <div className="panel" style={{ background:'black' }}>
+             <Canvas camera={{ position: [2, 2, 5], fov: 45 }}>
+               <BlochSphere theta={blochState.theta} phi={blochState.phi} active={!isCritical} />
              </Canvas>
-           </div>
         </div>
 
       </div>

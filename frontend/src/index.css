@@ -78,11 +78,19 @@ body {
 
 .grid-layout {
   display: grid;
-  grid-template-columns: 25% 50% 25%;
-  grid-template-rows: 60% 40%;
+  grid-template-columns: 20% 50% 30%; /* Oranları değiştirdim */
+  grid-template-rows: 65% 35%;
   height: 100vh;
-  gap: 4px;
-  padding: 4px;
+  gap: 0px; /* BOŞLUKLARI SIFIRLADIM */
+  padding: 0px;
+  background: #000;
+}
+
+.panel {
+  /* Border ve Shadow ayarlarını değiştirdim */
+  border: none; 
+  box-shadow: none;
+  background: rgba(17, 22, 29, 0.4);
 }
 
 /* Yanıp sönen imleç */
