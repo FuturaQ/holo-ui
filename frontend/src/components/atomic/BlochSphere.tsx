@@ -1,22 +1,37 @@
-import { useRef } from 'react';
+import { useRef, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { OrbitControls, Sphere, Html } from '@react-three/drei';
 import * as THREE from 'three';
 
-export const BlochSphere = () => {
+// Küre artık dışarıdan "hedef açıları" alıyor
+interface BlochProps {
+  theta?: number; // Kutup açısı (0 = Yukarı, PI = Aşağı)
+  phi?: number;   // Ekvator açısı (Dönüş)
+}
+
+export const BlochSphere = ({ theta = 0, phi = 0 }: BlochProps) => {
   const sphereRef = useRef<THREE.Mesh>(null);
   const arrowRef = useRef<THREE.Group>(null);
 
-  // Animasyon Döngüsü
+  // Hedef rotasyonu saklamak için (Yumuşak geçiş için)
+  const targetRotation = useRef(new THREE.Euler(0, 0, 0));
+
+  useEffect(() => {
+    // Kuantum durumundan 3D rotasyona çeviri
+    // Three.js koordinat sistemine göre ayarlamalar
+    targetRotation.current.z = theta; 
+    targetRotation.current.y = phi; 
+  }, [theta, phi]);
+
   useFrame((state) => {
     if (sphereRef.current) {
-      // Küre yavaşça dönsün
-      sphereRef.current.rotation.y += 0.001;
+      sphereRef.current.rotation.y += 0.001; // Küre iskeleti yavaşça dönsün
     }
     if (arrowRef.current) {
-      // Ok kuantum dalgalanması yapsın
-      arrowRef.current.rotation.z = Math.sin(state.clock.elapsedTime) * 0.1;
-      arrowRef.current.rotation.y = Math.cos(state.clock.elapsedTime * 0.5) * 0.1;
+      // Okun ucunu hedefe doğru "yumuşakça" (LERP) döndür
+      // Mevcut açıdan hedef açıya %10 hızla yaklaş
+      arrowRef.current.rotation.z = THREE.MathUtils.lerp(arrowRef.current.rotation.z, targetRotation.current.z, 0.1);
+      arrowRef.current.rotation.y = THREE.MathUtils.lerp(arrowRef.current.rotation.y, targetRotation.current.y, 0.1);
     }
   });
 
@@ -24,21 +39,14 @@ export const BlochSphere = () => {
     <>
       <ambientLight intensity={0.5} />
       <pointLight position={[10, 10, 10]} intensity={1.5} />
-      
-      {/* Kullanıcı kontrolü */}
       <OrbitControls enableZoom={false} />
 
       {/* Ana Tel Kafes Küre */}
       <Sphere ref={sphereRef} args={[2.5, 32, 32]}>
-        <meshStandardMaterial
-          color="#ffffff"
-          wireframe
-          transparent
-          opacity={0.15}
-        />
+        <meshStandardMaterial color="#ffffff" wireframe transparent opacity={0.15} />
       </Sphere>
 
-      {/* İç Dolgu (Hafif karartı) */}
+      {/* İç Dolgu */}
       <Sphere args={[2.45, 32, 32]}>
         <meshBasicMaterial color="#000000" transparent opacity={0.8} />
       </Sphere>
@@ -49,21 +57,21 @@ export const BlochSphere = () => {
         <meshBasicMaterial color="#888" />
       </mesh>
 
-      {/* Kuantum Vektörü (Ok) */}
-      <group ref={arrowRef} rotation={[0, 0, Math.PI / 4]}>
+      {/* DİNAMİK KUANTUM OKU */}
+      {/* Group rotasyonu ile oku hareket ettiriyoruz */}
+      <group ref={arrowRef}>
         <mesh position={[0, 1.2, 0]}>
           <cylinderGeometry args={[0.04, 0.04, 2.4, 8]} />
-          <meshStandardMaterial color="white" emissive="white" emissiveIntensity={2} />
+          <meshStandardMaterial color="#56f3d9" emissive="#56f3d9" emissiveIntensity={2} />
         </mesh>
         <mesh position={[0, 2.5, 0]}>
           <coneGeometry args={[0.15, 0.3, 16]} />
-          <meshStandardMaterial color="white" emissive="white" emissiveIntensity={2} />
+          <meshStandardMaterial color="#56f3d9" emissive="#56f3d9" emissiveIntensity={2} />
         </mesh>
       </group>
 
-      {/* Etiketler (HTML Overlay) */}
-      <Html position={[0, 2.8, 0]} center><div style={{color: 'var(--primary)', fontWeight:'bold'}}>|0⟩</div></Html>
-      <Html position={[0, -2.8, 0]} center><div style={{color: 'var(--primary)', fontWeight:'bold'}}>|1⟩</div></Html>
+      <Html position={[0, 2.8, 0]} center><div style={{color: '#56f3d9', fontWeight:'bold', fontSize:'10px'}}>|0⟩</div></Html>
+      <Html position={[0, -2.8, 0]} center><div style={{color: '#56f3d9', fontWeight:'bold', fontSize:'10px'}}>|1⟩</div></Html>
     </>
   );
 };

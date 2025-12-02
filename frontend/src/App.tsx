@@ -2,53 +2,83 @@ import { useState, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { BlochSphere } from './components/atomic/BlochSphere';
 
-// --- MOCK DATA (İleride Backend'den Gelecek) ---
-const MOCK_CODE = `
-def qrun(qcircuit, n, hypo, epsilon):
-    """
-    execute a quantum subroutine in the optimization solution
-    """
-    qdev = DEVSQ.backends(simulator=False, lambda=xmax)[n]
-    qjob = execute(priority=highest, qdev, qcircuit)
-    
-    if (qjob.retcode[7] == 0):
-        q_data = qjob.meas[n]
-    else: 
-        # run failed, try again
-        return FALSE 
-    
-    return q_data
-    
-    qreg = QuantumRegister(n//2)
-    do case
-        hypo in 0 to 3: / shor_pre_data = shor.pre(qint_data)
-        qreg = shor.qft(n, shor_pre_data)
-`;
+// Varsayılan: |0> Durumu (Ok Yukarı)
+// Theta: 0 (Kutup), Phi: 0
+const DEFAULT_CODE = `# Initialize Superposition
+H 0`;
 
 function App() {
+  const [code, setCode] = useState(DEFAULT_CODE);
   const [logs, setLogs] = useState<string[]>([]);
-  const [matrix, setMatrix] = useState<number[][]>([]);
+  const [isRunning, setIsRunning] = useState(false);
+  
+  // Bloch Küresi Açıları
+  const [blochState, setBlochState] = useState({ theta: 0, phi: 0 });
 
-  // Log Simülasyonu
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const timestamp = new Date().toISOString().split('T')[1].slice(0, -1);
-      const newLog = `[${timestamp}] QPU_NODE_${Math.floor(Math.random()*10)}: SYNDROME <${Math.random().toFixed(4)}>`;
-      setLogs(prev => [newLog, ...prev].slice(0, 15));
-    }, 800);
-    return () => clearInterval(interval);
-  }, []);
+  const runCircuit = async () => {
+    setIsRunning(true);
+    setLogs(prev => [`[${new Date().toISOString().split('T')[1].slice(0,-1)}] SENT_TO_QSIM...`, ...prev]);
 
-  // Matris Simülasyonu
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const rows = Array(12).fill(0).map(() => 
-        Array(4).fill(0).map(() => Math.floor(Math.random() * 9999))
-      );
-      setMatrix(rows);
-    }, 100);
-    return () => clearInterval(interval);
-  }, []);
+    try {
+      const response = await fetch('http://127.0.0.1:8000/quantum/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: code })
+      });
+      
+      const data = await response.json();
+      
+      if (data.status === 'success') {
+        setLogs(prev => [...data.logs.reverse(), ...prev]);
+        
+        // --- KUANTUM MATEMATİĞİ (Frontend Tarafı) ---
+        // Statevector'dan Qubit 0'ın açılarını hesapla
+        // |psi> = a|0> + b|1>
+        // Theta = 2 * acos(|a|)
+        // (Basitleştirilmiş görselleştirme)
+        
+        if (data.statevector && data.statevector.length >= 2) {
+            const amp0 = data.statevector[0]; // |0...0> genliği
+            const amp1 = data.statevector[1]; // |0...1> genliği (kabaca)
+            
+            // Olasılık genliği büyüklüğü (Magnitude)
+            const mag0 = Math.sqrt(amp0.real**2 + amp0.imag**2);
+            const mag1 = Math.sqrt(amp1.real**2 + amp1.imag**2);
+            
+            // Basit Theta Hesabı (0 ile PI arası)
+            // Eğer |1> genliği yüksekse açı PI'ye (180 derece) yaklaşır.
+            let theta = 2 * Math.acos(Math.min(mag0, 1.0));
+            
+            // Yön düzeltmesi (Hafif hile: |1> daha büyükse aşağı indir)
+            if (mag1 > mag0) theta = Math.PI - (2 * Math.acos(Math.min(mag1, 1.0)));
+
+            // Ekvatoral dönüş (Superposition için)
+            // Eğer H kapısı varsa (mag0 ~ mag1), oku 90 dereceye (Ekvatora) sabitle
+            if (Math.abs(mag0 - mag1) < 0.1 && mag0 > 0.4) {
+                theta = Math.PI / 2; 
+            }
+
+            console.log("Bloch Angles:", { theta });
+            setBlochState({ theta, phi: 0 }); // Şimdilik Phi'yi 0 tutuyoruz
+        }
+
+      } else {
+        setLogs(prev => [...data.logs, ...prev]);
+      }
+      
+    } catch (error) {
+      setLogs(prev => [`CONNECTION_ERROR: Backend unreachable`, ...prev]);
+    }
+    
+    setIsRunning(false);
+  };
+
+  // Klavye Kısayolu (Ctrl + Enter)
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.ctrlKey && e.key === 'Enter') {
+      runCircuit();
+    }
+  };
 
   return (
     <>
@@ -60,18 +90,40 @@ function App() {
         <div className="panel" style={{ gridRow: "1 / 3" }}>
           <div className="panel-header">
             <span>SYSTEM CONTROL</span>
-            <span>V 0.1</span>
+            <span>V 0.2</span>
           </div>
           
           <div className="code-text" style={{ fontSize: '11px' }}>
-            # 0 = Shor <br/>
-            # 1 = Discrete Log <br/>
-            # 2 = Elliptic <br/>
-            <br/>
-            <span style={{ color: 'var(--text-dim)' }}># Note: failure syndromes active</span>
-            <br/><br/>
-            
-            {/* STATİK GÜÇLÜ MARKA ALANI */}
+            <div style={{ marginBottom: '20px', color: 'var(--text-dim)' }}>
+              COMMANDS:<br/>
+              - H [qubit]<br/>
+              - X [qubit]<br/>
+              - CX [ctrl] [target]
+            </div>
+
+            <button 
+              onClick={runCircuit}
+              disabled={isRunning}
+              style={{
+                background: isRunning ? 'var(--text-dim)' : 'transparent',
+                color: isRunning ? '#000' : 'var(--primary)',
+                border: '1px solid var(--primary)',
+                padding: '10px 20px',
+                width: '100%',
+                cursor: 'pointer',
+                fontFamily: 'var(--font-stack)',
+                fontSize: '12px',
+                textTransform: 'uppercase',
+                letterSpacing: '2px',
+                transition: 'all 0.2s'
+              }}
+            >
+              {isRunning ? 'PROCESSING...' : 'EXECUTE SEQUENCE'}
+            </button>
+             <div style={{ textAlign: 'center', marginTop: '5px', fontSize: '9px', color: 'var(--text-dim)' }}>
+               [CTRL + ENTER]
+             </div>
+
             <div style={{ 
               border: '1px solid var(--primary)', 
               padding: '10px', 
@@ -83,81 +135,77 @@ function App() {
             }}>
               FUTURAQ PLATFORM
             </div>
-            
-            <div style={{ marginTop: '20px', color: 'var(--text-dim)', fontSize: '9px', textAlign: 'center' }}>
-              QUANTUM-AI HYBRID ARCHITECTURE<br/>
-              EST. 2025
-            </div>
           </div>
         </div>
 
-        {/* PANEL 2: MAIN CODE EDITOR */}
+        {/* PANEL 2: MAIN CODE EDITOR (Artık Textarea) */}
         <div className="panel">
           <div className="panel-header">
-            <span>Q774 PROCESS IMPLEMENTATION</span>
+            <span>QUANTUM INSTRUCTION SET</span>
             <span>EDIT MODE</span>
           </div>
-          <pre className="code-text" style={{ whiteSpace: 'pre-wrap' }}>
-            {MOCK_CODE}
-            <span className="cursor"></span>
-          </pre>
+          <textarea 
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            onKeyDown={handleKeyDown}
+            className="code-text"
+            spellCheck="false"
+            style={{ 
+              width: '100%', 
+              height: '100%', 
+              background: 'transparent', 
+              border: 'none', 
+              resize: 'none', 
+              outline: 'none',
+              fontFamily: 'var(--font-stack)',
+              fontSize: '14px',
+              color: 'var(--text-main)',
+              padding: '10px'
+            }}
+          />
         </div>
 
-        {/* PANEL 3: VARIANCE MONITOR */}
+        {/* PANEL 3: VARIANCE MONITOR (Statik kalabilir şimdilik) */}
         <div className="panel">
            <div className="panel-header">
             <span>GATE MONITOR</span>
             <span>AxTx</span>
           </div>
-          <table style={{ width: '100%', textAlign: 'right', fontFamily: 'monospace', color: 'var(--text-dim)' }}>
-            <thead>
-              <tr style={{ color: 'var(--primary)' }}>
-                <th>GID</th><th>T1-T2</th><th>Tx</th><th>Val</th>
-              </tr>
-            </thead>
-            <tbody>
-              {matrix.map((row, i) => (
-                <tr key={i}>
-                  <td style={{ color: 'var(--text-main)' }}>{row[0]}</td>
-                  <td>- S 08</td>
-                  <td>{row[2]}</td>
-                  <td style={{ color: 'var(--accent)' }}>{row[3]}m</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {/* ... Eski tablo kodu buraya ... (Şimdilik dokunmuyoruz) */}
+          <div style={{padding:'20px', textAlign:'center', color:'var(--text-dim)'}}>
+            Awaiting Hardware Link...
+          </div>
         </div>
 
-        {/* PANEL 4: SYSTEM LOGS */}
+        {/* PANEL 4: SYSTEM LOGS (Gerçek Loglar) */}
         <div className="panel">
           <div className="panel-header">
-            <span>SUB-ROUTINE RUNNING</span>
-            <span style={{color:'var(--success)'}}>ONLINE</span>
+            <span>KERNEL LOG</span>
+            <span style={{color: isRunning ? 'var(--accent)' : 'var(--success)'}}>
+                {isRunning ? 'BUSY' : 'IDLE'}
+            </span>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column-reverse', height: '100%', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto' }}>
              {logs.map((log, i) => (
-               <div key={i} style={{ fontFamily: 'monospace', fontSize: '10px', color: i===0 ? 'var(--success)' : 'var(--text-main)' }}>
+               <div key={i} style={{ fontFamily: 'monospace', fontSize: '10px', color: log.includes('ERROR') ? 'red' : 'var(--text-main)', borderBottom: '1px solid #222', padding: '2px' }}>
                  {log}
                </div>
              ))}
           </div>
         </div>
 
-        {/* PANEL 5: 3D BLOCH SPHERE */}
+{/* PANEL 5: 3D BLOCH SPHERE */}
         <div className="panel" style={{ position: 'relative', overflow: 'hidden' }}>
            <div className="panel-header" style={{ position: 'absolute', top: 10, left: 10, zIndex: 10, width: '90%' }}>
-             <span>STATE VISUALIZER</span>
+             <span>STATE VISUALIZER (QUBIT 0)</span>
              <span>|Ψ⟩</span>
            </div>
            
            <div style={{ width: '100%', height: '100%' }}>
              <Canvas camera={{ position: [0, 0, 6], fov: 45 }}>
-               <BlochSphere />
+               {/* Hesaplanan açıları Küreye gönderiyoruz */}
+               <BlochSphere theta={blochState.theta} phi={blochState.phi} />
              </Canvas>
-           </div>
-           
-           <div style={{ position: 'absolute', bottom: 10, right: 10, color: 'var(--success)', fontSize: '10px' }}>
-             COHERENCE: 99.9%
            </div>
         </div>
 

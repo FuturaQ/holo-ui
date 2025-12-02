@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .routers import system
+from .routers import system, quantum  # <--- quantum eklendi
 
 app = FastAPI(
     title="FuturaQ Holo-UI Gateway",
@@ -8,10 +8,10 @@ app = FastAPI(
     version="0.1.0"
 )
 
-# CORS Configuration (Allow Frontend to talk to Backend)
+# CORS (Frontend'in Backend'e erişmesi için)
 origins = [
-    "http://localhost:5173", # Vite default port
-    "http://localhost:3000", # React default port
+    "http://localhost:5173",
+    "http://localhost:3000",
 ]
 
 app.add_middleware(
@@ -24,6 +24,7 @@ app.add_middleware(
 
 # Include Routers
 app.include_router(system.router)
+app.include_router(quantum.router) # <--- Router sisteme dahil edildi
 
 @app.get("/")
 def read_root():
