@@ -1,17 +1,17 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .routers import system, quantum, ai  # <--- 'ai' eklendi
+from .routers import system, quantum, ai, crypto  # <--- 'crypto' eklendi
 
 app = FastAPI(
     title="FuturaQ Holo-UI Gateway",
-    version="0.2.0"
+    version="0.3.0"
 )
 
+# ... (CORS ayarları aynı kalsın) ...
 origins = [
     "http://localhost:5173",
     "http://localhost:3000",
 ]
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -22,8 +22,9 @@ app.add_middleware(
 
 app.include_router(system.router)
 app.include_router(quantum.router)
-app.include_router(ai.router)  # <--- Sisteme dahil edildi
+app.include_router(ai.router)
+app.include_router(crypto.router)  # <--- Sisteme dahil edildi
 
 @app.get("/")
 def read_root():
-    return {"status": "online", "system": "FuturaQ QAHP", "version": "v0.2"}
+    return {"status": "online", "system": "FuturaQ QAHP", "version": "v0.3"}

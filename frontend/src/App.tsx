@@ -10,7 +10,9 @@ function App() {
   const [logs, setLogs] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [blochState, setBlochState] = useState({ theta: 0, phi: 0 });
-  
+
+  const [cryptoData, setCryptoData] = useState<any[]>([]);
+
   // --- YENİ AI STATE'LERİ ---
   const [prompt, setPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -77,6 +79,34 @@ function App() {
     } catch(e) { console.error(e); }
     setIsRunning(false);
   };
+
+  // ... runCircuit ve generateWithAI fonksiyonlarının yanına
+  const establishSecureLink = async () => {
+      try {
+          const res = await fetch('http://127.0.0.1:8000/crypto/handshake');
+          const data = await res.json();
+          
+          // Yeni gelen veriyi listenin başına ekle (Log gibi akması için)
+          setCryptoData(prev => [
+              {
+                  id: Math.floor(Math.random() * 9999),
+                  algo: data.algo,
+                  key: data.keys.public_key_frag,
+                  status: data.status
+              },
+              ...prev
+          ].slice(0, 12)); // Sadece son 12 satırı tut
+          
+      } catch (e) {
+          console.error("Crypto module offline");
+      }
+  };
+
+  // Otomatik handshake simülasyonu (Her 2 saniyede bir çalışsın)
+  useEffect(() => {
+      const interval = setInterval(establishSecureLink, 2000);
+      return () => clearInterval(interval);
+  }, []);
 
   // Klavye: Ctrl+Enter (Run), Enter (AI Input'tayken Generate)
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -163,10 +193,34 @@ function App() {
           />
         </div>
 
-        {/* PANEL 3, 4, 5 (SAĞ VE ALT) - AYNI KALSIN */}
+        {/* PANEL 3: CRYPTO MONITOR (RIGHT) */}
         <div className="panel">
-           <div className="panel-header"><span>GATE MONITOR</span><span>AxTx</span></div>
-           <div style={{padding:'20px', textAlign:'center', color:'var(--text-dim)'}}>Awaiting Hardware Link...</div>
+          <div className="panel-header">
+            <span>PQC UPLINK (KYBER-512)</span>
+            <span style={{ color: 'var(--success)' }}>SECURE</span>
+          </div>
+          
+          <table style={{ width: '100%', textAlign: 'left', fontFamily: 'monospace', color: 'var(--text-dim)', fontSize: '10px' }}>
+            <thead>
+              <tr style={{ color: 'var(--primary)', borderBottom: '1px solid #333' }}>
+                <th>ID</th><th>ALGO</th><th>KEY_FRAG</th><th>STATUS</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cryptoData.map((row, i) => (
+                <tr key={i} style={{ opacity: 1 - (i * 0.08) }}> {/* Eskiyen veriler sönükleşsin */}
+                  <td style={{ color: 'var(--text-main)' }}>#{row.id}</td>
+                  <td style={{ color: 'var(--accent)' }}>{row.algo}</td>
+                  <td style={{ fontFamily: 'monospace' }}>{row.key}</td>
+                  <td style={{ color: 'var(--success)' }}>{row.status}</td>
+                </tr>
+              ))}
+              {/* Veri yoksa placeholder */}
+              {cryptoData.length === 0 && (
+                  <tr><td colSpan={4} style={{textAlign:'center', paddingTop:'20px'}}>INITIALIZING PQC PROTOCOL...</td></tr>
+              )}
+            </tbody>
+          </table>
         </div>
 
         <div className="panel">
